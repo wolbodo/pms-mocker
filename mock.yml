@@ -135,7 +135,7 @@
           target: roles
           title: Groepen
           displayValue: name
-        state:
+        state: {}
         street:
           type: string
           title: Straat
@@ -222,6 +222,7 @@
 - people:
   - email: dexter+admin@wlbd.nl
     phone: '+31152121516'
+    nickname: Admin
   - email: dexter@wlbd.nl
     phone: '+31152121516'
     nickname: Wikkert
@@ -277,8 +278,10 @@
     frontdoor: true
     directdebit: [contribution]
   - email: dexter+keymaster@wlbd.nl
+    nickname: Keymaster
     phone: '+31152121516'
   - email: dexter+aivd@wlbd.nl
+    nickname: AIVD
 
 - roles:
     - name: login
@@ -362,8 +365,7 @@
       people_roles:
         # TODO, Parse these type of create permissions (even fix their definition).
         create:
-          people_id: '*'
-          roles_id: [4, 3]
+          roles: [admin, board]
     board:
       people:
         create: {}
@@ -371,8 +373,7 @@
         view: [birthdate, boardnotes, cashregister, city, country, deathdate, directdebit, email, emergencyinfo, firstname, frontdoor, functions, gender, housenumber, iban, infix, lastname, membertype, mobile, nickname, notes, peoplesince, phone, state, street, zipcode]
       people_roles:
         create:
-          people_id: '*'
-          roles_id: [8, 4, 9, 5]
+          roles: [board, member, keymanager, keyobserver]
         edit: [name]
       roles:
         create: {}

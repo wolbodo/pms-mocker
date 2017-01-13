@@ -77,7 +77,7 @@ fn handle_people(people: & Value) {
 
   sql_query.push_str("\n--#####################--\n-- Creating all people --\n--#####################--\n\n");
   sql_query.push_str("DELETE FROM people; ALTER SEQUENCE people_id_seq RESTART WITH 1;");
-  sql_query.push_str("\nINSERT INTO people (email, phone, modified_by, data)\nVALUES\n--");
+  sql_query.push_str("\nINSERT INTO people (email, phone, modified_by, data, password_hash)\nVALUES\n--");
   for ref value in people.as_sequence().unwrap() {
     // Take properties from value
     let mut mutvalue = value.to_owned().clone();
@@ -85,8 +85,15 @@ fn handle_people(people: & Value) {
 
     let email = person.remove(&to_value("email")).unwrap();
     let phone = person.remove(&to_value("phone")).unwrap_or(to_value(""));  
+    let password = person.remove(&to_value("password")).unwrap_or(to_value(""));  
 
-    sql_query.push_str(format!(",\n\t('{}', '{}', -1, '{}')", email.as_str().unwrap(), phone.as_str().unwrap(), serde_json::to_string(person).unwrap().as_str()).as_str());
+    sql_query.push_str(format!(
+      ",\n\t('{}', '{}', -1, '{}', crypt('{}',gen_salt('bf',4)))",
+      email.as_str().unwrap(),
+      phone.as_str().unwrap(),
+      serde_json::to_string(person).unwrap().as_str(),
+      password.as_str().unwrap()
+    ).as_str());
   }
   sql_query.push_str(";");
   println!("{}", sql_query);
@@ -185,8 +192,9 @@ fn handle_roles_permissions(permission_maps: & Value) {
   sql_query += format!("\n--##########################--\n-- Creating all permission mappings --\n--##########################--\n\n").as_str();
   sql_query += "DELETE FROM roles_permissions;";
 
-  let mut field_permissions = String::new();
-  let mut create_permissions = String::new();
+  let mut field_perms = String::new();
+  let mut global_create_perms = String::new();
+  let mut other_create_perms = String::new();
 
   // For each role to map to:
   for (role, permissions) in permission_maps.as_mapping().unwrap().iter() {
@@ -198,24 +206,42 @@ fn handle_roles_permissions(permission_maps: & Value) {
       for (p_type, permission_set) in permissions.as_mapping().unwrap().iter() {
         let p_type = p_type.as_str().unwrap();
         match (p_type, permission_set)  {
-          ("create", &Value::Mapping(_)) => {
-            // Filter all global create mapping
-            create_permissions += format!("\t('{}', '{}', '{}'),\n", p_type, role, table).as_str();
+          ("create", &Value::Mapping(ref create)) => {
+            if create.is_empty() {
+              // Filter all global create mapping
+              global_create_perms += format!(
+                "\t('{}', '{}', '{}'),\n",
+                p_type,
+                role,
+                table
+              ).as_str();
+            } else {
+              // It's a selective create mapping
+              let mut create_iter = create.iter();
+              while let Some((&Value::String(ref value_ref), roles)) = create_iter.next() {
+                other_create_perms += format!(
+                  "\t('{}', '{}_id', {}),\n",
+                  role,
+                  value_ref,
+                  to_pg_array(roles)
+                ).as_str();
+              }
+            }
           },
           ("edit", &Value::Sequence(_))
           | ("view", &Value::Sequence(_)) => {
             // Filter all fields permissions, Vec<String>
-            field_permissions += format!("\t('{}', '{}', '{}', {}),\n", p_type, role, table, to_pg_array(permission_set)).as_str();
+            field_perms += format!("\t('{}', '{}', '{}', {}),\n", p_type, role, table, to_pg_array(permission_set)).as_str();
           },
-          (str, value) => println!("\t\tCUSTOM PERMISSION: {:?} | {:?}", str, value),
+          (str, value) => println!("\t\t -- CUSTOM PERMISSION| Not handled: {:?} | {:?}", str, value),
         }
       }
     }
   }
 
-  if field_permissions.len() > 0 {
+  if field_perms.len() > 0 {
     // Strip the comma
-    let (field_permissions, _) = field_permissions.split_at(field_permissions.len()-2);
+    let (field_perms, _) = field_perms.split_at(field_perms.len()-2);
 
     sql_query += "\n-- Allowing the field permissions.\n";
     sql_query += "INSERT INTO roles_permissions (roles_id, permissions_id, modified_by)\n";
@@ -232,15 +258,15 @@ fn handle_roles_permissions(permission_maps: & Value) {
           AND permissions.ref_table = alias.f_table
           AND permissions.ref_key = 'fields'
           AND permissions.ref_value = fields.id
-    ", field_permissions).as_str();
+    ", field_perms).as_str();
   }
 
-  if create_permissions.len() > 0 {
-    if field_permissions.len() > 0 {
+  if global_create_perms.len() > 0 {
+    if field_perms.len() > 0 {
       sql_query += "\nUNION\n";
     }
     // Strip the comma
-    let (create_permissions, _) = create_permissions.split_at(create_permissions.len()-2);
+    let (global_create_perms, _) = global_create_perms.split_at(global_create_perms.len()-2);
 
     sql_query += "\n-- Allowing the global create permissions.\n";
     sql_query += format!("
@@ -255,7 +281,36 @@ fn handle_roles_permissions(permission_maps: & Value) {
           AND permissions.ref_table = alias.f_table
           AND permissions.ref_key IS NULL
           AND permissions.ref_value IS NULL
-    ", create_permissions).as_str();
+    ", global_create_perms).as_str();
+  }
+
+  if other_create_perms.len() > 0 {
+    if (field_perms.len() > 0) || (global_create_perms.len() > 0) {
+      sql_query += "\nUNION\n";
+    }
+    // Strip the comma
+    let (other_create_perms, _) = other_create_perms.split_at(other_create_perms.len()-2);
+
+    sql_query += "\n-- Allowing the specific create permissions.\n";
+    sql_query += format!("
+      SELECT DISTINCT roles.id, permissions.id, -1 
+      FROM (VALUES 
+{}
+      ) alias (role, ref_key, subject_roles)
+      JOIN roles
+        ON roles.valid_till IS NULL
+        AND roles.name = alias.role
+      JOIN permissions
+        ON permissions.valid_till IS NULL
+        AND permissions.ref_table = 'people_roles'
+        AND permissions.type::TEXT = 'create'
+        AND permissions.ref_key = alias.ref_key
+        AND permissions.ref_value IN (
+          SELECT subject_roles.id FROM roles subject_roles
+            WHERE subject_roles.valid_till IS NULL
+            AND subject_roles.name IN (SELECT unnest(alias.subject_roles))
+        )
+    ", other_create_perms).as_str();
   }
 
   // Filter all people_roles mapping
