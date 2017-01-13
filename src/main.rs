@@ -182,13 +182,89 @@ fn handle_roles_permissions(permission_maps: & Value) {
   // Generate a couple of queries based on the items in permissions
   let mut sql_query = String::new();
 
-  sql_query.push_str(format!("\n--##########################--\n-- Creating all permission mappings --\n--##########################--\n\n").as_str());
-  sql_query.push_str("DELETE FROM roles_permissions;");
+  sql_query += format!("\n--##########################--\n-- Creating all permission mappings --\n--##########################--\n\n").as_str();
+  sql_query += "DELETE FROM roles_permissions;";
 
-  println!("{:?}", permission_maps);
-  println!("{}", serde_json::to_string_pretty(permission_maps).unwrap());
-  println!("{}", serde_yaml::to_string(permission_maps).unwrap());
-  println!("{}", sql_query);
+  let mut field_permissions = String::new();
+  let mut create_permissions = String::new();
+
+  // For each role to map to:
+  for (role, permissions) in permission_maps.as_mapping().unwrap().iter() {
+    let role = role.as_str().unwrap();
+
+    for (table, permissions) in permissions.as_mapping().unwrap().iter() {
+      let table = table.as_str().unwrap();
+
+      for (p_type, permission_set) in permissions.as_mapping().unwrap().iter() {
+        let p_type = p_type.as_str().unwrap();
+        match (p_type, permission_set)  {
+          ("create", &Value::Mapping(_)) => {
+            // Filter all global create mapping
+            create_permissions += format!("\t('{}', '{}', '{}'),\n", p_type, role, table).as_str();
+          },
+          ("edit", &Value::Sequence(_))
+          | ("view", &Value::Sequence(_)) => {
+            // Filter all fields permissions, Vec<String>
+            field_permissions += format!("\t('{}', '{}', '{}', {}),\n", p_type, role, table, to_pg_array(permission_set)).as_str();
+          },
+          (str, value) => println!("\t\tCUSTOM PERMISSION: {:?} | {:?}", str, value),
+        }
+      }
+    }
+  }
+
+  if field_permissions.len() > 0 {
+    // Strip the comma
+    let (field_permissions, _) = field_permissions.split_at(field_permissions.len()-2);
+
+    sql_query += "\n-- Allowing the field permissions.\n";
+    sql_query += "INSERT INTO roles_permissions (roles_id, permissions_id, modified_by)\n";
+    sql_query += format!("
+      SELECT DISTINCT roles.id, permissions.id, -1 FROM
+      (VALUES
+{}
+      ) alias (p_type, p_role, f_table, fields_names)
+      JOIN roles ON roles.valid_till IS NULL AND roles.name = alias.p_role
+      JOIN fields ON fields.valid_till IS NULL AND fields.name IN (SELECT unnest(alias.fields_names))
+      JOIN permissions ON
+          permissions.valid_till IS NULL
+          AND permissions.type::TEXT = alias.p_type
+          AND permissions.ref_table = alias.f_table
+          AND permissions.ref_key = 'fields'
+          AND permissions.ref_value = fields.id
+    ", field_permissions).as_str();
+  }
+
+  if create_permissions.len() > 0 {
+    if field_permissions.len() > 0 {
+      sql_query += "\nUNION\n";
+    }
+    // Strip the comma
+    let (create_permissions, _) = create_permissions.split_at(create_permissions.len()-2);
+
+    sql_query += "\n-- Allowing the global create permissions.\n";
+    sql_query += format!("
+      SELECT DISTINCT roles.id, permissions.id, -1 FROM
+      (VALUES
+{}
+      ) alias (p_type, p_role, f_table)
+      JOIN roles ON roles.valid_till IS NULL AND roles.name = alias.p_role
+      JOIN permissions ON
+          permissions.valid_till IS NULL
+          AND permissions.type::TEXT = alias.p_type
+          AND permissions.ref_table = alias.f_table
+          AND permissions.ref_key IS NULL
+          AND permissions.ref_value IS NULL
+    ", create_permissions).as_str();
+  }
+
+  // Filter all people_roles mapping
+
+
+  // println!("{}", serde_json::to_string_pretty(permission_maps).unwrap());
+  // println!("{}", serde_yaml::to_string(permission_maps).unwrap());
+  println!("{};", sql_query);
+
 }
 
 
