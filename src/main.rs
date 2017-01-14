@@ -85,14 +85,15 @@ fn handle_people(people: & Value) {
 
     let email = person.remove(&to_value("email")).unwrap();
     let phone = person.remove(&to_value("phone")).unwrap_or(to_value(""));  
-    let password = person.remove(&to_value("password")).unwrap_or(to_value(""));  
+    // let password = person.remove(&to_value("password")).unwrap_or(to_value(""));  
 
     sql_query.push_str(format!(
-      ",\n\t('{}', '{}', -1, '{}', crypt('{}',gen_salt('bf',4)))",
+      // ",\n\t('{}', '{}', -1, '{}', crypt('{}',gen_salt('bf',4)))",
+      ",\n\t('{}', '{}', -1, '{}', NULL)",
       email.as_str().unwrap(),
       phone.as_str().unwrap(),
-      serde_json::to_string(person).unwrap().as_str(),
-      password.as_str().unwrap()
+      serde_json::to_string(person).unwrap().as_str()
+      // password.as_str().unwrap()
     ).as_str());
   }
   sql_query.push_str(";");
