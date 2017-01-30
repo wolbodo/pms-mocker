@@ -82,10 +82,13 @@
           type: array
           title: Functies
         gender:
-          male: Man
-          female: Vrouw
-          trans: Trans
-          other: Anders
+          type: enum
+          title: Geslacht
+          options:
+            male: Man
+            female: Vrouw
+            trans: Trans
+            other: Anders
         housenumber:
           type: string
           title: Huisnummer
@@ -361,11 +364,13 @@
         view: [city, coasters, country, directdebit, email, emergencyinfo, favoritenumber, gender, housenumber, iban, mobile, notes, phone, privatenotes, state, street, zipcode]
     admin:
       people:
-        edit: [password_hash]
+        edit: [password_hash, roles]
       people_roles:
         # TODO, Parse these type of create permissions (even fix their definition).
         create:
-          roles: [admin, board]
+          roles: [board, member, keymanager, keyobserver]
+      roles:
+        edit: [members]
     board:
       people:
         create: {}

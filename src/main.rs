@@ -334,16 +334,36 @@ fn main() {
   let yaml_content: serde_yaml::Value = serde_yaml::from_reader(file).unwrap();
 
   // Loop over the initial sequences
-  for data in yaml_content.as_sequence().unwrap() {
-    for (ref key, ref value ) in data.as_mapping().unwrap().iter() {
+  match env::args().nth(2) {
+    Some(filter) => {
+      for data in yaml_content.as_sequence().unwrap() {
+        for (ref key, ref value ) in data.as_mapping().unwrap().iter() {
+          if key.as_str().unwrap() == filter {
+            match key.as_str() {
+              Some("fields") => handle_fields(value),
+              Some("people") => handle_people(value),
+              Some("roles") => handle_roles(value),
+              Some("permissions") => handle_permissions(value),
+              Some("roles_permissions") => handle_roles_permissions(value),
+              Some(_) | None => panic!("No key found")
+            }
+          }
+        }
+      }
+    },
+    _ => {
+      for data in yaml_content.as_sequence().unwrap() {
+        for (ref key, ref value ) in data.as_mapping().unwrap().iter() {
 
-      match key.as_str() {
-        Some("fields") => handle_fields(value),
-        Some("people") => handle_people(value),
-        Some("roles") => handle_roles(value),
-        Some("permissions") => handle_permissions(value),
-        Some("roles_permissions") => handle_roles_permissions(value),
-        Some(_) | None => panic!("No key found")
+          match key.as_str() {
+            Some("fields") => handle_fields(value),
+            Some("people") => handle_people(value),
+            Some("roles") => handle_roles(value),
+            Some("permissions") => handle_permissions(value),
+            Some("roles_permissions") => handle_roles_permissions(value),
+            Some(_) | None => panic!("No key found")
+          }
+        }
       }
     }
   }
