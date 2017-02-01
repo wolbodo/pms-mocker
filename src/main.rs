@@ -112,15 +112,20 @@ fn handle_roles(roles: & Value) {
 
   sql_query.push_str("\n--####################--\n-- Creating all roles --\n--####################--\n\n");
   sql_query.push_str("DELETE FROM roles; ALTER SEQUENCE roles_id_seq RESTART WITH 1;");
-  sql_query.push_str("\nINSERT INTO roles (name, modified_by)\nVALUES\n--");
+  sql_query.push_str("\nINSERT INTO roles (name, data, modified_by)\nVALUES\n--");
   for ref value in roles.as_sequence().unwrap() {
     // Take properties from value
-    let role = value.as_mapping().unwrap();
+    let mut mutvalue = value.to_owned().clone();
+    let mut role = mutvalue.as_mapping_mut().unwrap();
 
-    let name = role.get(&to_value("name")).unwrap();
-    let members = role.get(&to_value("members")).unwrap();  
+    let name = role.remove(&to_value("name")).unwrap();
+    let ref members = role.remove(&to_value("members")).unwrap();  
 
-    sql_query.push_str(format!(",\n\t('{}', -1)", name.as_str().unwrap()).as_str());
+    sql_query.push_str(format!(
+      ",\n\t('{}', '{}', -1)",
+      name.as_str().unwrap(),
+      serde_json::to_string(role).unwrap().as_str()
+      ).as_str());
 
     // Assign member alias
     if members.as_sequence().unwrap().len() != 0 {
