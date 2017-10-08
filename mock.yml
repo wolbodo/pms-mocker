@@ -224,9 +224,11 @@
 
 - people:
   - email: dexter+admin@wlbd.nl
+    password: '1234'
     phone: '+31152121516'
     nickname: Admin
   - email: dexter@wlbd.nl
+    password: '1234'
     phone: '+31152121516'
     nickname: Wikkert
     firstname: Willem
@@ -280,6 +282,7 @@
     cashregister: true
     frontdoor: true
     directdebit: [contribution]
+    password: '1234'
   - email: dexter+keymaster@wlbd.nl
     nickname: Keymaster
     phone: '+31152121516'
