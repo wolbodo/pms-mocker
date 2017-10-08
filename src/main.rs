@@ -1,7 +1,6 @@
 extern crate serde_yaml;
 extern crate serde_json;
 extern crate serde;
-extern crate linked_hash_map;
 
 #[macro_use] extern crate lazy_static;
 extern crate regex;
@@ -28,14 +27,14 @@ fn to_pg_array(seq: &Value) -> String {
 }
 
 macro_rules! get_string_or_unnest {
-    ($value:expr, $name:expr) => (match $value.get(&to_value($name)) {
-        Some(&Value::Sequence(ref value)) => format!("unnest({})", to_pg_array(&to_value(&value))),
+    ($value:expr, $name:expr) => (match $value.get(&to_value($name).unwrap()) {
+        Some(&Value::Sequence(ref value)) => format!("unnest({})", to_pg_array(&to_value(&value).unwrap())),
         Some(&Value::String(ref value)) => format!("'{}'", value.clone()),
         _ => panic!(format!("No '{}' found in permission entry", $name))
     })
 }
 macro_rules! get_string_or {
-    ($value:expr, $name:expr, $or:expr) => (match $value.get(&to_value($name)) {
+    ($value:expr, $name:expr, $or:expr) => (match $value.get(&to_value($name).unwrap()) {
         Some(&Value::String(ref value)) => format!("'{}'", value.clone()),
         _ => $or.to_string()
     })
@@ -53,16 +52,16 @@ fn handle_fields(fields: & Value) {
     // Take properties from value
     let ref_table = key.as_str().unwrap();
     let mut mut_data = value.to_owned().clone();
-    let mut mapping = mut_data.as_mapping_mut().unwrap();
+    let mapping = mut_data.as_mapping_mut().unwrap();
 
     // .as_mapping_mut().unwrap();
-    let properties = mapping.remove(&to_value("properties")).unwrap();
+    let properties = mapping.remove(&to_value("properties").unwrap()).unwrap();
 
     sql_query.push_str(format!(",\n\t('{}', NULL, '{}', -1)", ref_table, serde_json::to_string(mapping).unwrap()).as_str());
 
     properties.as_mapping().unwrap()
       .iter()
-      .fold(&mut sql_query, |mut acc, (ref name, ref definition)| {
+      .fold(&mut sql_query, |acc, (ref name, ref definition)| {
         acc.push_str(format!(",\n\t('{}', '{}', '{}', -1)", ref_table, name.as_str().unwrap(), serde_json::to_string(definition).unwrap()).as_str());
         acc
       });
@@ -81,10 +80,10 @@ fn handle_people(people: & Value) {
   for ref value in people.as_sequence().unwrap() {
     // Take properties from value
     let mut mutvalue = value.to_owned().clone();
-    let mut person = mutvalue.as_mapping_mut().unwrap();
+    let person = mutvalue.as_mapping_mut().unwrap();
 
-    let email = person.remove(&to_value("email")).unwrap();
-    let phone = person.remove(&to_value("phone")).unwrap_or(to_value(""));  
+    let email = person.remove(&to_value("email").unwrap()).unwrap();
+    let phone = person.remove(&to_value("phone").unwrap()).unwrap_or(to_value("").unwrap());  
     // let password = person.remove(&to_value("password")).unwrap_or(to_value(""));  
 
     sql_query.push_str(format!(
@@ -116,10 +115,10 @@ fn handle_roles(roles: & Value) {
   for ref value in roles.as_sequence().unwrap() {
     // Take properties from value
     let mut mutvalue = value.to_owned().clone();
-    let mut role = mutvalue.as_mapping_mut().unwrap();
+    let role = mutvalue.as_mapping_mut().unwrap();
 
-    let name = role.remove(&to_value("name")).unwrap();
-    let ref members = role.remove(&to_value("members")).unwrap();  
+    let name = role.remove(&to_value("name").unwrap()).unwrap();
+    let ref members = role.remove(&to_value("members").unwrap()).unwrap();  
 
     sql_query.push_str(format!(
       ",\n\t('{}', '{}', -1)",
